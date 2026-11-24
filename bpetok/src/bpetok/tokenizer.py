@@ -21,4 +21,20 @@ class Tokenizer:
         self.merges = merges
         self.vocab = {i: bytes([i]) for i in range(256)}
         for (a, b), new_id in merges.items():
-            pass
+            self.vocab[new_id] = self.vocab[a] + self.vocab[b]
+
+def decode(ids, vocab):
+    tokens = b"".join(vocab[idx] for idx in ids)
+    text = tokens.decode("utf-8", errors="replace")
+    return text
+
+def encoder(text, merges):
+    tokens = list(text.encode("utf-8"))
+    while len(tokens) >= 2:
+        count = get_pair_counts(tokens)
+        pair = min(count, key=lambda p: merges.get(p, float("inf")))
+        if pair not in merges:
+            break
+        idx = merges[pair]
+        tokens = merge(tokens, pair, idx)
+    return tokens
