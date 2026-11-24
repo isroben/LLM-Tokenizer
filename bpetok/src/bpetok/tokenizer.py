@@ -1,4 +1,6 @@
 from collections import Counter
+from bpetok.patterns import GPT4_PATTERN
+import regex as re
 
 def get_pair_counts(ids):
     return Counter(zip(ids, ids[1:]))
@@ -17,24 +19,31 @@ def merge(ids, pair, new_id):
     return newids
 
 class Tokenizer:
-    def __init__(self, merges):
+    def __init__(self, merges, pattern=GPT4_PATTERN):
         self.merges = merges
         self.vocab = {i: bytes([i]) for i in range(256)}
+        self._pat = re.compile(GPT4_PATTERN)
         for (a, b), new_id in merges.items():
             self.vocab[new_id] = self.vocab[a] + self.vocab[b]
 
-def decode(ids, vocab):
-    tokens = b"".join(vocab[idx] for idx in ids)
-    text = tokens.decode("utf-8", errors="replace")
-    return text
+    def _encode_chunk(self, chunk_text):
+        tokens = list(chunk_text.encode("utf-8"))
+        while len(tokens) >= 2:
+            counts = get_pair_counts(tokens)
+            pair = min(counts, key=lambda p: self.merges.get(p, float("inf")))
+            if pair not in self.merges:
+                break
+            new_id = self.merges[pair]
+            tokens = merge(tokens, pair, new_id)
+        return tokens
 
-def encoder(text, merges):
-    tokens = list(text.encode("utf-8"))
-    while len(tokens) >= 2:
-        count = get_pair_counts(tokens)
-        pair = min(count, key=lambda p: merges.get(p, float("inf")))
-        if pair not in merges:
-            break
-        idx = merges[pair]
-        tokens = merge(tokens, pair, idx)
-    return tokens
+    def decoder(self, ids):
+        tokens = b"".join(self.vocab[new_id] for new_id in ids)
+        text = tokens.decode("utf-8", errors="replace")
+        return text
+
+    def encoder(self, text):
+        ids = []
+        for chunk in self._pat.findall(text):
+            ids.extend(self._encode_chunk(chunk))
+        return ids
